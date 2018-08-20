@@ -22,6 +22,7 @@ go_library(
         "//staging/src/k8s.io/apiserver/pkg/admission/plugin/webhook/rules:go_default_library",
         "//staging/src/k8s.io/client-go/informers:go_default_library",
         "//staging/src/k8s.io/client-go/kubernetes:go_default_library",
+        "//staging/src/k8s.io/client-go/util/webhook:go_default_library",
     ],
 )
 
