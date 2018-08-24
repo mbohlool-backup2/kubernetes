@@ -20,27 +20,62 @@ import (
 	"fmt"
 
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
+	apiextensionsfeatures "k8s.io/apiextensions-apiserver/pkg/features"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	"k8s.io/client-go/util/webhook"
 )
 
-// NewCRDConverter returns a new CRD converter based on the conversion settings in crd object.
-func NewCRDConverter(crd *apiextensions.CustomResourceDefinition) (safe, unsafe runtime.ObjectConvertor) {
+// CRDConverterFactory is the factory for all CRD converters.
+type CRDConverterFactory struct {
+	// webhookConverterFactory is the factory for webhook converters.
+	// This field should not be used if CustomResourceWebhookConversion feature is disabled.
+	webhookConverterFactory *webhookConverterFactory
+}
+
+// NewCRDConverterFactory creates a new CRDConverterFactory
+func NewCRDConverterFactory(serviceResolver webhook.ServiceResolver, authResolverWrapper webhook.AuthenticationInfoResolverWrapper) (*CRDConverterFactory, error) {
+	converterFactory := &CRDConverterFactory{}
+	if utilfeature.DefaultFeatureGate.Enabled(apiextensionsfeatures.CustomResourceWebhookConversion) {
+		webhookConverterFactory, err := newWebhookConverterFactory(serviceResolver, authResolverWrapper)
+		if err != nil {
+			return nil, err
+		}
+		converterFactory.webhookConverterFactory = webhookConverterFactory
+	}
+	return converterFactory, nil
+}
+
+// NewConverter returns a new CRD converter based on the conversion settings in crd object.
+func (m *CRDConverterFactory) NewConverter(crd *apiextensions.CustomResourceDefinition) (safe, unsafe runtime.ObjectConvertor, err error) {
 	validVersions := map[schema.GroupVersion]bool{}
 	for _, version := range crd.Spec.Versions {
 		validVersions[schema.GroupVersion{Group: crd.Spec.Group, Version: version.Name}] = true
 	}
 
-	// The only converter right now is nopConverter. More converters will be returned based on the
-	// CRD object when they introduced.
-	unsafe = &crdConverter{
-		clusterScoped: crd.Spec.Scope == apiextensions.ClusterScoped,
-		delegate: &nopConverter{
-			validVersions: validVersions,
-		},
+	switch crd.Spec.Conversion.Strategy {
+	case apiextensions.NopConverter:
+		unsafe = &crdConverter{
+			clusterScoped: crd.Spec.Scope == apiextensions.ClusterScoped,
+			delegate: &nopConverter{
+				validVersions: validVersions,
+			},
+		}
+		return &safeConverterWrapper{unsafe}, unsafe, nil
+	case apiextensions.WebhookConverter:
+		if !utilfeature.DefaultFeatureGate.Enabled(apiextensionsfeatures.CustomResourceWebhookConversion) {
+			return nil, nil, fmt.Errorf("webhook conversion is disabled on this cluster")
+		}
+		unsafe, err := m.webhookConverterFactory.NewWebhookConverter(validVersions, crd)
+		if err != nil {
+			return nil, nil, err
+		}
+		return &safeConverterWrapper{unsafe}, unsafe, nil
 	}
-	return &safeConverterWrapper{unsafe}, unsafe
+
+	return nil, nil, fmt.Errorf("unknown conversion strategy \"%s\" for CRD %s", crd.Spec.Conversion.Strategy, crd.Spec.Group)
 }
 
 var _ runtime.ObjectConvertor = &crdConverter{}

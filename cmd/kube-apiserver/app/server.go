@@ -176,7 +176,7 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	if err != nil {
 		return nil, err
 	}
-	apiExtensionsServer, err := createAPIExtensionsServer(apiExtensionsConfig, genericapiserver.NewEmptyDelegate())
+	apiExtensionsServer, err := createAPIExtensionsServer(apiExtensionsConfig, serviceResolver, webhook.CreateWebhookAuthResolverWrapper(kubeAPIServerConfig.GenericConfig.LoopbackClientConfig, proxyTransport), genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
 	}
