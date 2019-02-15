@@ -85,7 +85,7 @@ func TestAdmit(t *testing.T) {
 			attr = webhooktesting.NewAttribute(ns, tt.AdditionalLabels, tt.IsDryRun)
 		}
 
-		err = wh.Admit(attr)
+		err = wh.Admit(attr, nil)
 		if tt.ExpectAllow != (err == nil) {
 			t.Errorf("%s: expected allowed=%v, but got err=%v", tt.Name, tt.ExpectAllow, err)
 		}
@@ -158,7 +158,7 @@ func TestAdmitCachedClient(t *testing.T) {
 			continue
 		}
 
-		err = wh.Admit(webhooktesting.NewAttribute(ns, nil, false))
+		err = wh.Admit(webhooktesting.NewAttribute(ns, nil, false), nil)
 		if tt.ExpectAllow != (err == nil) {
 			t.Errorf("%s: expected allowed=%v, but got err=%v", tt.Name, tt.ExpectAllow, err)
 		}

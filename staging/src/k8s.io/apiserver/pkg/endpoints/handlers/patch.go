@@ -181,20 +181,18 @@ func PatchResource(r rest.Patcher, scope RequestScope, admit admission.Interface
 		}
 
 		p := patcher{
-			namer:           scope.Namer,
-			creater:         scope.Creater,
-			defaulter:       scope.Defaulter,
-			typer:           scope.Typer,
-			unsafeConvertor: scope.UnsafeConvertor,
-			kind:            scope.Kind,
-			resource:        scope.Resource,
-			subresource:     scope.Subresource,
-			dryRun:          dryrun.IsDryRun(options.DryRun),
+			namer:       scope.Namer,
+			kind:        scope.Kind,
+			resource:    scope.Resource,
+			subresource: scope.Subresource,
+			dryRun:      dryrun.IsDryRun(options.DryRun),
+
+			objectInterfaces: &scope,
 
 			hubGroupVersion: scope.HubGroupVersion,
 
-			createValidation: withAuthorization(rest.AdmissionToValidateObjectFunc(admit, staticCreateAttributes), scope.Authorizer, createAuthorizerAttributes),
-			updateValidation: rest.AdmissionToValidateObjectUpdateFunc(admit, staticUpdateAttributes),
+			createValidation: withAuthorization(rest.AdmissionToValidateObjectFunc(admit, staticCreateAttributes, &scope), scope.Authorizer, createAuthorizerAttributes),
+			updateValidation: rest.AdmissionToValidateObjectUpdateFunc(admit, staticUpdateAttributes, &scope),
 			admissionCheck:   mutatingAdmission,
 
 			codec: codec,
@@ -247,15 +245,13 @@ type mutateObjectUpdateFunc func(obj, old runtime.Object) error
 // moved into this type.
 type patcher struct {
 	// Pieces of RequestScope
-	namer           ScopeNamer
-	creater         runtime.ObjectCreater
-	defaulter       runtime.ObjectDefaulter
-	typer           runtime.ObjectTyper
-	unsafeConvertor runtime.ObjectConvertor
-	resource        schema.GroupVersionResource
-	kind            schema.GroupVersionKind
-	subresource     string
-	dryRun          bool
+	namer       ScopeNamer
+	resource    schema.GroupVersionResource
+	kind        schema.GroupVersionKind
+	subresource string
+	dryRun      bool
+
+	objectInterfaces admission.ObjectInterfaces
 
 	hubGroupVersion schema.GroupVersion
 
@@ -365,19 +361,19 @@ type smpPatcher struct {
 func (p *smpPatcher) applyPatchToCurrentObject(currentObject runtime.Object) (runtime.Object, error) {
 	// Since the patch is applied on versioned objects, we need to convert the
 	// current object to versioned representation first.
-	currentVersionedObject, err := p.unsafeConvertor.ConvertToVersion(currentObject, p.kind.GroupVersion())
+	currentVersionedObject, err := p.objectInterfaces.GetObjectUnsafeConvertor().ConvertToVersion(currentObject, p.kind.GroupVersion())
 	if err != nil {
 		return nil, err
 	}
-	versionedObjToUpdate, err := p.creater.New(p.kind)
+	versionedObjToUpdate, err := p.objectInterfaces.GetObjectCreater().New(p.kind)
 	if err != nil {
 		return nil, err
 	}
-	if err := strategicPatchObject(p.defaulter, currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj); err != nil {
+	if err := strategicPatchObject(p.objectInterfaces.GetObjectDefaulter(), currentVersionedObject, p.patchBytes, versionedObjToUpdate, p.schemaReferenceObj); err != nil {
 		return nil, err
 	}
 	// Convert the object back to the hub version
-	newObj, err := p.unsafeConvertor.ConvertToVersion(versionedObjToUpdate, p.hubGroupVersion)
+	newObj, err := p.objectInterfaces.GetObjectUnsafeConvertor().ConvertToVersion(versionedObjToUpdate, p.hubGroupVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -507,7 +503,7 @@ func (p *patcher) applyAdmission(ctx context.Context, patchedObject runtime.Obje
 	}
 	if p.admissionCheck != nil && p.admissionCheck.Handles(operation) {
 		attributes := p.admissionAttributes(ctx, patchedObject, currentObject, operation)
-		return patchedObject, p.admissionCheck.Admit(attributes)
+		return patchedObject, p.admissionCheck.Admit(attributes, p.objectInterfaces)
 	}
 	return patchedObject, nil
 }
@@ -522,7 +518,7 @@ func (p *patcher) patchResource(ctx context.Context, scope RequestScope) (runtim
 			fieldManager: scope.FieldManager,
 		}
 	case types.StrategicMergePatchType:
-		schemaReferenceObj, err := p.unsafeConvertor.ConvertToVersion(p.restPatcher.New(), p.kind.GroupVersion())
+		schemaReferenceObj, err := p.objectInterfaces.GetObjectUnsafeConvertor().ConvertToVersion(p.restPatcher.New(), p.kind.GroupVersion())
 		if err != nil {
 			return nil, false, err
 		}
@@ -537,7 +533,7 @@ func (p *patcher) patchResource(ctx context.Context, scope RequestScope) (runtim
 			fieldManager: scope.FieldManager,
 			patch:        p.patchBytes,
 			options:      p.options,
-			creater:      p.creater,
+			creater:      p.objectInterfaces.GetObjectCreater(),
 			kind:         p.kind,
 		}
 		p.forceAllowCreate = true
