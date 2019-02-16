@@ -362,9 +362,7 @@ func (tc *patchTestCase) Run(t *testing.T) {
 	ctx = request.WithNamespace(ctx, namespace)
 
 	namer := &testNamer{namespace, name}
-	creater := runtime.ObjectCreater(scheme)
-	defaulter := runtime.ObjectDefaulter(scheme)
-	convertor := runtime.UnsafeObjectConvertor(scheme)
+	objectInterfaces := &admission.SchemeBasedObjectInterfaces{scheme}
 	kind := examplev1.SchemeGroupVersion.WithKind("Pod")
 	resource := examplev1.SchemeGroupVersion.WithResource("pods")
 	schemaReferenceObj := &examplev1.Pod{}
@@ -435,11 +433,10 @@ func (tc *patchTestCase) Run(t *testing.T) {
 
 		p := patcher{
 			namer:           namer,
-			creater:         creater,
-			defaulter:       defaulter,
-			unsafeConvertor: convertor,
 			kind:            kind,
 			resource:        resource,
+
+			objectInterfaces: objectInterfaces,
 
 			hubGroupVersion: hubVersion,
 
@@ -944,6 +941,6 @@ func (f mutateObjectUpdateFunc) Handles(operation admission.Operation) bool {
 	return true
 }
 
-func (f mutateObjectUpdateFunc) Admit(a admission.Attributes) (err error) {
+func (f mutateObjectUpdateFunc) Admit(a admission.Attributes, o admission.ObjectInterfaces) (err error) {
 	return f(a.GetObject(), a.GetOldObject())
 }

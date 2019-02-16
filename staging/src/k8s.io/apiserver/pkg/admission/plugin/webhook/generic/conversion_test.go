@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/apis/example"
 	examplev1 "k8s.io/apiserver/pkg/apis/example/v1"
 	example2v1 "k8s.io/apiserver/pkg/apis/example2/v1"
@@ -39,21 +40,9 @@ func initiateScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
-type schemeBasedObjectInterfaces struct {
-	scheme *runtime.Scheme
-}
-
-func (r *schemeBasedObjectInterfaces) GetObjectCreater() runtime.ObjectCreater     { return r.scheme }
-func (r *schemeBasedObjectInterfaces) GetObjectTyper() runtime.ObjectTyper         { return r.scheme }
-func (r *schemeBasedObjectInterfaces) GetObjectDefaulter() runtime.ObjectDefaulter { return r.scheme }
-func (r *schemeBasedObjectInterfaces) GetObjectConvertor() runtime.ObjectConvertor { return r.scheme }
-func (r *schemeBasedObjectInterfaces) GetObjectUnsafeConvertor() runtime.ObjectConvertor {
-	return r.scheme
-}
-
 func TestConvertToGVK(t *testing.T) {
 	scheme := initiateScheme(t)
-	o := schemeBasedObjectInterfaces{scheme}
+	o := &admission.SchemeBasedObjectInterfaces{scheme}
 	table := map[string]struct {
 		obj         runtime.Object
 		gvk         schema.GroupVersionKind

@@ -22,12 +22,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-
-	"k8s.io/api/admission/v1beta1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
 	webhooktesting "k8s.io/apiserver/pkg/admission/plugin/webhook/testing"
 )
 
@@ -69,7 +64,7 @@ func TestValidate(t *testing.T) {
 		}
 
 		attr := webhooktesting.NewAttribute(ns, nil, tt.IsDryRun)
-		err = wh.Validate(attr)
+		err = wh.Validate(attr, nil)
 		if tt.ExpectAllow != (err == nil) {
 			t.Errorf("%s: expected allowed=%v, but got err=%v", tt.Name, tt.ExpectAllow, err)
 		}
