@@ -19,6 +19,7 @@ package validating
 import (
 	"context"
 	"fmt"
+	"k8s.io/apiserver/pkg/admission"
 	"sync"
 	"time"
 
@@ -46,7 +47,7 @@ func newValidatingDispatcher(cm *webhook.ClientManager) generic.Dispatcher {
 
 var _ generic.Dispatcher = &validatingDispatcher{}
 
-func (d *validatingDispatcher) Dispatch(ctx context.Context, attr *generic.VersionedAttributes, relevantHooks []*v1beta1.Webhook) error {
+func (d *validatingDispatcher) Dispatch(ctx context.Context, attr *generic.VersionedAttributes, o admission.ObjectInterfaces, relevantHooks []*v1beta1.Webhook) error {
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, len(relevantHooks))
 	wg.Add(len(relevantHooks))

@@ -33,10 +33,6 @@ import (
 
 // TestValidate tests that ValidatingWebhook#Validate works as expected
 func TestValidate(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, v1beta1.AddToScheme(scheme))
-	require.NoError(t, corev1.AddToScheme(scheme))
-
 	testServer := webhooktesting.NewTestServer(t)
 	testServer.StartTLS()
 	defer testServer.Close()
@@ -61,7 +57,6 @@ func TestValidate(t *testing.T) {
 
 		wh.SetAuthenticationInfoResolverWrapper(webhooktesting.Wrapper(webhooktesting.NewAuthenticationInfoResolver(new(int32))))
 		wh.SetServiceResolver(webhooktesting.NewServiceResolver(*serverURL))
-		wh.SetScheme(scheme)
 		wh.SetExternalKubeClientSet(client)
 		wh.SetExternalKubeInformerFactory(informer)
 
@@ -102,10 +97,6 @@ func TestValidate(t *testing.T) {
 
 // TestValidateCachedClient tests that ValidatingWebhook#Validate should cache restClient
 func TestValidateCachedClient(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, v1beta1.AddToScheme(scheme))
-	require.NoError(t, corev1.AddToScheme(scheme))
-
 	testServer := webhooktesting.NewTestServer(t)
 	testServer.StartTLS()
 	defer testServer.Close()
@@ -122,7 +113,6 @@ func TestValidateCachedClient(t *testing.T) {
 		t.Fatalf("Failed to create validating webhook: %v", err)
 	}
 	wh.SetServiceResolver(webhooktesting.NewServiceResolver(*serverURL))
-	wh.SetScheme(scheme)
 
 	for _, tt := range webhooktesting.NewCachedClientTestcases(serverURL) {
 		ns := "webhook-test"
@@ -142,7 +132,7 @@ func TestValidateCachedClient(t *testing.T) {
 			continue
 		}
 
-		err = wh.Validate(webhooktesting.NewAttribute(ns, nil, false))
+		err = wh.Validate(webhooktesting.NewAttribute(ns, nil, false), nil)
 		if tt.ExpectAllow != (err == nil) {
 			t.Errorf("%s: expected allowed=%v, but got err=%v", tt.Name, tt.ExpectAllow, err)
 		}

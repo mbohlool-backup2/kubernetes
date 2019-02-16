@@ -39,9 +39,21 @@ func initiateScheme(t *testing.T) *runtime.Scheme {
 	return s
 }
 
+type schemeBasedObjectInterfaces struct {
+	scheme *runtime.Scheme
+}
+
+func (r *schemeBasedObjectInterfaces) GetObjectCreater() runtime.ObjectCreater     { return r.scheme }
+func (r *schemeBasedObjectInterfaces) GetObjectTyper() runtime.ObjectTyper         { return r.scheme }
+func (r *schemeBasedObjectInterfaces) GetObjectDefaulter() runtime.ObjectDefaulter { return r.scheme }
+func (r *schemeBasedObjectInterfaces) GetObjectConvertor() runtime.ObjectConvertor { return r.scheme }
+func (r *schemeBasedObjectInterfaces) GetObjectUnsafeConvertor() runtime.ObjectConvertor {
+	return r.scheme
+}
+
 func TestConvertToGVK(t *testing.T) {
 	scheme := initiateScheme(t)
-	c := convertor{Scheme: scheme}
+	o := schemeBasedObjectInterfaces{scheme}
 	table := map[string]struct {
 		obj         runtime.Object
 		gvk         schema.GroupVersionKind
@@ -122,7 +134,7 @@ func TestConvertToGVK(t *testing.T) {
 
 	for name, test := range table {
 		t.Run(name, func(t *testing.T) {
-			actual, err := c.ConvertToGVK(test.obj, test.gvk)
+			actual, err := ConvertToGVK(test.obj, test.gvk, o)
 			if err != nil {
 				t.Error(err)
 			}

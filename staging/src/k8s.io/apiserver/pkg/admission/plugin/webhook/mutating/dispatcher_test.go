@@ -21,8 +21,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -45,11 +43,6 @@ var sampleCRD = unstructured.Unstructured{
 }
 
 func TestDispatch(t *testing.T) {
-	scheme := runtime.NewScheme()
-	require.NoError(t, example.AddToScheme(scheme))
-	require.NoError(t, examplev1.AddToScheme(scheme))
-	require.NoError(t, example2v1.AddToScheme(scheme))
-
 	tests := []struct {
 		name        string
 		in          runtime.Object
@@ -118,16 +111,14 @@ func TestDispatch(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			a := &mutatingDispatcher{
-				plugin: &Plugin{
-					scheme: scheme,
-				},
+				plugin: &Plugin{},
 			}
 			attr := generic.VersionedAttributes{
 				Attributes:         admission.NewAttributesRecord(test.out, nil, schema.GroupVersionKind{}, "", "", schema.GroupVersionResource{}, "", admission.Operation(""), false, nil),
 				VersionedOldObject: nil,
 				VersionedObject:    test.in,
 			}
-			if err := a.Dispatch(context.TODO(), &attr, nil); err != nil {
+			if err := a.Dispatch(context.TODO(), &attr, nil, nil); err != nil {
 				t.Fatalf("%s: unexpected error: %v", test.name, err)
 			}
 			if !reflect.DeepEqual(attr.Attributes.GetObject(), test.expectedObj) {
