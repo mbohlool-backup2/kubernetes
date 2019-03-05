@@ -68,6 +68,9 @@ func SetDefaults_CustomResourceDefinitionSpec(obj *CustomResourceDefinitionSpec)
 			Strategy: NoneConverter,
 		}
 	}
+	if len(obj.Conversion.ConversionReviewVersions) == 0 {
+		obj.Conversion.ConversionReviewVersions = []string{"v1beta1"}
+	}
 }
 
 // hasPerVersionColumns returns true if a CRD uses per-version columns.
