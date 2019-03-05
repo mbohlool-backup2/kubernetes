@@ -150,10 +150,36 @@ func validateRule(rule *admissionregistration.Rule, fldPath *field.Path, allowSu
 	return allErrors
 }
 
+func isAcceptedAdmissionReviewVersion(v string) bool {
+	return "v1beta1" == v
+}
+
+func validateAdmissionReviewVersions(versions []string, fldPath *field.Path) field.ErrorList {
+	allErrors := field.ErrorList{}
+
+	// Currently only v1beta1 accepted in AdmissionReviewVersions
+	if len(versions) < 1 {
+		allErrors = append(allErrors, field.Required(fldPath, ""))
+	} else {
+		seen := map[string]bool{}
+		for i, v := range versions {
+			if !isAcceptedAdmissionReviewVersion(v) {
+				allErrors = append(allErrors, field.Invalid(fldPath.Index(i), v, ""))
+			}
+			if seen[v] {
+				allErrors = append(allErrors, field.Invalid(fldPath.Index(i), v, "duplicate version"))
+			}
+			seen[v] = true
+		}
+	}
+	return allErrors
+}
+
 func ValidateValidatingWebhookConfiguration(e *admissionregistration.ValidatingWebhookConfiguration) field.ErrorList {
 	allErrors := genericvalidation.ValidateObjectMeta(&e.ObjectMeta, false, genericvalidation.NameIsDNSSubdomain, field.NewPath("metadata"))
 	for i, hook := range e.Webhooks {
 		allErrors = append(allErrors, validateWebhook(&hook, field.NewPath("webhooks").Index(i))...)
+		allErrors = append(allErrors, validateAdmissionReviewVersions(hook.AdmissionReviewVersions, field.NewPath("webhooks").Index(i).Child("admissionReviewVersions"))...)
 	}
 	return allErrors
 }
@@ -162,6 +188,7 @@ func ValidateMutatingWebhookConfiguration(e *admissionregistration.MutatingWebho
 	allErrors := genericvalidation.ValidateObjectMeta(&e.ObjectMeta, false, genericvalidation.NameIsDNSSubdomain, field.NewPath("metadata"))
 	for i, hook := range e.Webhooks {
 		allErrors = append(allErrors, validateWebhook(&hook, field.NewPath("webhooks").Index(i))...)
+		allErrors = append(allErrors, validateAdmissionReviewVersions(hook.AdmissionReviewVersions, field.NewPath("webhooks").Index(i).Child("admissionReviewVersions"))...)
 	}
 	return allErrors
 }
@@ -248,9 +275,47 @@ func validateRuleWithOperations(ruleWithOperations *admissionregistration.RuleWi
 }
 
 func ValidateValidatingWebhookConfigurationUpdate(newC, oldC *admissionregistration.ValidatingWebhookConfiguration) field.ErrorList {
-	return ValidateValidatingWebhookConfiguration(newC)
+	allErrors := genericvalidation.ValidateObjectMeta(&newC.ObjectMeta, false, genericvalidation.NameIsDNSSubdomain, field.NewPath("metadata"))
+
+	oldWebhooks := map[string]admissionregistration.Webhook{}
+	for _, hook := range oldC.Webhooks {
+		oldWebhooks[hook.Name] = hook
+	}
+
+	for i, hook := range newC.Webhooks {
+		fldPath := field.NewPath("webhooks").Index(i)
+		allErrors = append(allErrors, validateWebhook(&hook, fldPath)...)
+		oldHook, exists := oldWebhooks[hook.Name]
+		if exists {
+			// Only validate admissionReviewVersions if they were valid before
+			if len(validateAdmissionReviewVersions(oldHook.AdmissionReviewVersions, fldPath)) == 0 {
+				allErrors = append(allErrors, validateAdmissionReviewVersions(hook.AdmissionReviewVersions, fldPath.Child("admissionReviewVersions"))...)
+			}
+
+		}
+	}
+	return allErrors
 }
 
 func ValidateMutatingWebhookConfigurationUpdate(newC, oldC *admissionregistration.MutatingWebhookConfiguration) field.ErrorList {
-	return ValidateMutatingWebhookConfiguration(newC)
+	allErrors := genericvalidation.ValidateObjectMeta(&newC.ObjectMeta, false, genericvalidation.NameIsDNSSubdomain, field.NewPath("metadata"))
+
+	oldWebhooks := map[string]admissionregistration.Webhook{}
+	for _, hook := range oldC.Webhooks {
+		oldWebhooks[hook.Name] = hook
+	}
+
+	for i, hook := range newC.Webhooks {
+		fldPath := field.NewPath("webhooks").Index(i)
+		allErrors = append(allErrors, validateWebhook(&hook, fldPath)...)
+		oldHook, exists := oldWebhooks[hook.Name]
+		if exists {
+			// Only validate admissionReviewVersions if they were valid before
+			if len(validateAdmissionReviewVersions(oldHook.AdmissionReviewVersions, fldPath)) == 0 {
+				allErrors = append(allErrors, validateAdmissionReviewVersions(hook.AdmissionReviewVersions, fldPath.Child("admissionReviewVersions"))...)
+			}
+
+		}
+	}
+	return allErrors
 }

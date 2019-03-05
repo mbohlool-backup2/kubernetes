@@ -29,6 +29,13 @@ func strPtr(s string) *string { return &s }
 func int32Ptr(i int32) *int32 { return &i }
 
 func newValidatingWebhookConfiguration(hooks []admissionregistration.Webhook) *admissionregistration.ValidatingWebhookConfiguration {
+	// If the test case did not specify an AdmissionReviewVersions, default it so the test passes as
+	// this field will be defaulted in production code.
+	for i := range hooks {
+		if len(hooks[i].AdmissionReviewVersions) == 0 {
+			hooks[i].AdmissionReviewVersions = []string{"v1beta1"}
+		}
+	}
 	return &admissionregistration.ValidatingWebhookConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "config",
@@ -48,6 +55,42 @@ func TestValidateValidatingWebhookConfiguration(t *testing.T) {
 		config        *admissionregistration.ValidatingWebhookConfiguration
 		expectedError string
 	}{
+		{
+			name: "should pass on valid AdmissionReviewVersion",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"v1beta1"},
+					},
+				}),
+			expectedError: ``,
+		},
+		{
+			name: "should fail on invalid AdmissionReviewVersion",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"invalidVersion"},
+					},
+				}),
+			expectedError: `Invalid value: "invalidVersion"`,
+		},
+		{
+			name: "should fail on duplicate AdmissionReviewVersion",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"v1beta1", "v1beta1"},
+					},
+				}),
+			expectedError: `Invalid value: "v1beta1": duplicate version`,
+		},
 		{
 			name: "all Webhooks must have a fully qualified name",
 			config: newValidatingWebhookConfiguration(
@@ -607,6 +650,94 @@ func TestValidateValidatingWebhookConfiguration(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			errs := ValidateValidatingWebhookConfiguration(test.config)
+			err := errs.ToAggregate()
+			if err != nil {
+				if e, a := test.expectedError, err.Error(); !strings.Contains(a, e) || e == "" {
+					t.Errorf("expected to contain %s, got %s", e, a)
+				}
+			} else {
+				if test.expectedError != "" {
+					t.Errorf("unexpected no error, expected to contain %s", test.expectedError)
+				}
+			}
+		})
+
+	}
+}
+
+func TestValidateValidatingWebhookConfigurationUpdate(t *testing.T) {
+	validClientConfig := admissionregistration.WebhookClientConfig{
+		URL: strPtr("https://example.com"),
+	}
+	tests := []struct {
+		name          string
+		oldconfig     *admissionregistration.ValidatingWebhookConfiguration
+		config        *admissionregistration.ValidatingWebhookConfiguration
+		expectedError string
+	}{
+		{
+			name: "should pass on valid new AdmissionReviewVersion",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"v1beta1"},
+					},
+				}),
+			oldconfig: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:         "webhook.k8s.io",
+						ClientConfig: validClientConfig,
+					},
+				}),
+			expectedError: ``,
+		},
+		{
+			name: "should pass on invalid AdmissionReviewVersion with invalid previous versions",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"invalid_v1", "invalid_v2"},
+					},
+				}),
+			oldconfig: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"invalid_v0"},
+					},
+				}),
+			expectedError: ``,
+		},
+		{
+			name: "should fail on invalid AdmissionReviewVersion with valid previous versions",
+			config: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"invalid_v1"},
+					},
+				}),
+			oldconfig: newValidatingWebhookConfiguration(
+				[]admissionregistration.Webhook{
+					{
+						Name:                    "webhook.k8s.io",
+						ClientConfig:            validClientConfig,
+						AdmissionReviewVersions: []string{"v1beta1"},
+					},
+				}),
+			expectedError: `Invalid value: "invalid_v1"`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			errs := ValidateValidatingWebhookConfigurationUpdate(test.config, test.oldconfig)
 			err := errs.ToAggregate()
 			if err != nil {
 				if e, a := test.expectedError, err.Error(); !strings.Contains(a, e) || e == "" {

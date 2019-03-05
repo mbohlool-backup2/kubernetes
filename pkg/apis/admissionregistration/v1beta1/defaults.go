@@ -44,6 +44,10 @@ func SetDefaults_Webhook(obj *admissionregistrationv1beta1.Webhook) {
 		obj.TimeoutSeconds = new(int32)
 		*obj.TimeoutSeconds = 30
 	}
+
+	if len(obj.AdmissionReviewVersions) == 0 {
+		obj.AdmissionReviewVersions = []string{"v1beta1"}
+	}
 }
 
 func SetDefaults_Rule(obj *admissionregistrationv1beta1.Rule) {
